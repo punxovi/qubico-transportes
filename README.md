@@ -6,7 +6,7 @@ Qúbico Transportes es una aplicación móvil corporativa (B2B) desarrollada en 
 
 ---
 
-## 👥 Perfiles de Usuario y Credenciales de Acceso
+## Perfiles de Usuario y Credenciales de Acceso
 
 La aplicación cuenta con validación de credenciales en local y segmentación de permisos según el rol.
 
@@ -17,9 +17,9 @@ La aplicación cuenta con validación de credenciales en local y segmentación d
 
 ---
 
-## 🚀 Características y Funcionalidades Principales
+## Características y Funcionalidades Principales
 
-### 🏢 1. Panel de Administración (Vista Admin)
+### 1. Panel de Administración (Vista Admin)
 Diseñado para el control absoluto de las operaciones logísticas y la flota.
 
 * **Dashboard (Inicio):** Indicadores clave de rendimiento (KPIs) diarios. Pedidos completados, incidencias y distribución de estados en gráficas y tarjetas de resumen.
@@ -38,7 +38,7 @@ Diseñado para el control absoluto de las operaciones logísticas y la flota.
     * **Gestión de Usuarios:** Mantenedor de cuentas de conductores y personal administrativo.
     * **Reportes Avanzados:** Gráficos y consolidación mensual.
 
-### 🚚 2. Experiencia del Conductor (Hoja de Ruta)
+### 2. Experiencia del Conductor (Hoja de Ruta)
 Interfaz enfocada en usabilidad, diseñada para no distraer y facilitar entregas eficientes.
 
 * **Hoja de Ruta Dinámica:**
@@ -58,7 +58,7 @@ Interfaz enfocada en usabilidad, diseñada para no distraer y facilitar entregas
 
 ---
 
-## 🛠️ Arquitectura y Tecnologías Técnicas
+## Arquitectura y Tecnologías Técnicas
 
 El código está estructurado bajo los más altos estándares de desarrollo móvil en Flutter:
 
@@ -72,7 +72,7 @@ El código está estructurado bajo los más altos estándares de desarrollo móv
 
 ---
 
-## ⚙️ Cómo ejecutar el proyecto
+## Cómo ejecutar el proyecto
 
 1. **Prerequisitos:** SDK de Flutter instalado (>= 3.x), emulador o dispositivo físico conectado por ADB.
 2. Clona el repositorio:
