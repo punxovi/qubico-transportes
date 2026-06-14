@@ -19,59 +19,70 @@ class FleetManagementScreen extends StatelessWidget {
     final drivers = users.where((u) => u.isActive && u.role == UserRole.conductor).toList();
     
     String? selectedDriverName = vehicle?.driverName;
+    String? selectedDriverId = vehicle?.driverId;
     if (selectedDriverName != null && selectedDriverName.isEmpty) {
       selectedDriverName = null;
+      selectedDriverId = null;
     }
-    
-    // Si el conductor asignado previamente ya no existe o está inactivo, lo agregamos temporalmente para evitar error visual
+
+    // If the previously assigned driver no longer exists or is inactive, add them
+    // temporarily so the dropdown can show the current value without crashing.
     bool driverExists = drivers.any((d) => d.fullName == selectedDriverName);
     if (selectedDriverName != null && !driverExists) {
-      drivers.add(User(id: 'temp', fullName: selectedDriverName, email: '', role: UserRole.conductor));
+      drivers.add(User(id: selectedDriverId ?? 'temp', fullName: selectedDriverName, email: '', password: '', role: UserRole.conductor));
     }
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(vehicle == null ? 'Registrar Vehículo' : 'Editar Vehículo'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: 'Nombre (Ej: Furgón A)'),
-                validator: (v) => v!.isEmpty ? 'Requerido' : null,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: patenteController,
-                decoration: const InputDecoration(labelText: 'Patente'),
-                validator: (v) => v!.isEmpty ? 'Requerido' : null,
-              ),
-              const SizedBox(height: 8),
-              TextFormField(
-                controller: weightController,
-                decoration: const InputDecoration(labelText: 'Capacidad Máxima (kg)'),
-                keyboardType: TextInputType.number,
-                validator: (v) => v!.isEmpty ? 'Requerido' : null,
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                value: selectedDriverName,
-                decoration: const InputDecoration(labelText: 'Conductor Asignado'),
-                items: drivers.map((driver) {
-                  return DropdownMenuItem<String>(
-                    value: driver.fullName,
-                    child: Text(driver.fullName),
-                  );
-                }).toList(),
-                onChanged: (value) {
-                  selectedDriverName = value;
-                },
-                validator: (v) => v == null || v.isEmpty ? 'Requerido' : null,
-              ),
-            ],
+        content: SingleChildScrollView(
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: nameController,
+                  decoration: const InputDecoration(labelText: 'Nombre (Ej: Furgón A)'),
+                  validator: (v) => v!.isEmpty ? 'Requerido' : null,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: patenteController,
+                  decoration: const InputDecoration(labelText: 'Patente'),
+                  validator: (v) => v!.isEmpty ? 'Requerido' : null,
+                ),
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: weightController,
+                  decoration: const InputDecoration(labelText: 'Capacidad Máxima (kg)'),
+                  keyboardType: TextInputType.number,
+                  validator: (v) => v!.isEmpty ? 'Requerido' : null,
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedDriverName,
+                  decoration: const InputDecoration(labelText: 'Conductor Asignado'),
+                  items: drivers.map((driver) {
+                    return DropdownMenuItem<String>(
+                      value: driver.fullName,
+                      child: Text(driver.fullName),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    selectedDriverName = value;
+                    try {
+                      selectedDriverId = drivers.firstWhere((d) => d.fullName == value).id;
+                      if (selectedDriverId == 'temp') selectedDriverId = null;
+                    } catch (_) {
+                      selectedDriverId = null;
+                    }
+                  },
+                  validator: (v) => v == null || v.isEmpty ? 'Requerido' : null,
+                ),
+              ],
+            ),
           ),
         ),
         actions: [
@@ -85,6 +96,7 @@ class FleetManagementScreen extends StatelessWidget {
                   patente: patenteController.text.toUpperCase(),
                   maxWeight: double.tryParse(weightController.text) ?? 0.0,
                   driverName: selectedDriverName ?? '',
+                  driverId: selectedDriverId,
                 );
 
                 if (vehicle == null) {

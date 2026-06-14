@@ -1,10 +1,6 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart' as ll;
 import 'package:provider/provider.dart';
-import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import '../../providers/order_provider.dart';
 import '../../providers/vehicle_provider.dart';
@@ -18,11 +14,11 @@ import '../../services/pdf_service.dart';
 import '../theme/app_theme.dart';
 import 'login_screen.dart';
 import 'fleet_management_screen.dart';
-import 'order_detail_screen.dart';
 import 'admin_order_detail_screen.dart';
 import 'user_management_screen.dart';
 import 'reports_screen.dart';
 import 'home_screen.dart';
+import '../widgets/live_fleet_map.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -55,6 +51,18 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   String _selectedWindow = '08:00 - 10:00';
   String _selectedLoad = 'Paquetería';
   Timer? _debounceTimer;
+  Timer? _autoRefreshTimer;
+  DateTime _lastRefreshed = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      context.read<OrderProvider>().fetchOrders();
+      setState(() => _lastRefreshed = DateTime.now());
+    });
+  }
 
   @override
   void dispose() {
@@ -70,6 +78,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     _widthController.dispose();
     _heightController.dispose();
     _debounceTimer?.cancel();
+    _autoRefreshTimer?.cancel();
     super.dispose();
   }
 
@@ -120,25 +129,37 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       final fullAddress = "${_calleController.text.trim()} ${_numeroController.text.trim()}, ${_comunaController.text.trim()}";
 
       // Guardar como cliente frecuente si es manual y la casilla está marcada
+      final clientProvider = context.read<ClientProvider>();
+      final orderProvider = context.read<OrderProvider>();
+      final userProvider = context.read<UserProvider>();
+      final createdBy = userProvider.currentUser?.fullName ?? 'Admin';
+
+      final resolvedDriverId = _selectedVehicle!.driverId;
+      if (resolvedDriverId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('El vehículo seleccionado no tiene conductor asignado. Vaya a Gestión de Flota y asigne un conductor.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 4),
+          ),
+        );
+        return;
+      }
+
       if (_isManualClient && _saveAsFrequent) {
         final clientRut = _rutController.text.trim();
         final clientName = _clientNameController.text.trim();
-        final clientPhone = _phoneController.text.trim();
-        final clientEmail = _emailController.text.trim();
-
         if (clientRut.isNotEmpty && clientName.isNotEmpty) {
           final newClient = Client(
             rut: clientRut,
             name: clientName,
-            phone: clientPhone,
-            email: clientEmail,
+            phone: _phoneController.text.trim(),
+            email: _emailController.text.trim(),
             billingAddress: fullAddress,
           );
           try {
-            await context.read<ClientProvider>().addClient(newClient);
-          } catch (_) {
-            // Ignorar si ya existe
-          }
+            await clientProvider.addClient(newClient);
+          } catch (_) {}
         }
       }
 
@@ -153,18 +174,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         timeWindow: _selectedWindow,
         status: 'Pendiente',
         scheduledDate: DateTime.now(),
-        driverId: _selectedVehicle!.driverName,
+        driverId: resolvedDriverId,
       );
 
-      await context.read<OrderProvider>().addOrder(order);
+      await orderProvider.addOrder(order, createdBy: createdBy);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Pedido registrado y asignado exitosamente')),
       );
 
       _resetForm();
-      setState(() {
-        _currentIndex = 0; // Volver a la pestaña Inicio
-      });
+      setState(() => _currentIndex = 0);
     }
   }
 
@@ -187,6 +207,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: () {
+              context.read<UserProvider>().logout();
               Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -237,6 +258,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   Widget _buildAdminHeader() {
+    final adminName = context.watch<UserProvider>().currentUser?.fullName ?? 'Administrador';
+    final initials = adminName.split(' ').take(2).map((e) => e.isNotEmpty ? e[0].toUpperCase() : '').join();
+
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -244,23 +268,23 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         children: [
           CircleAvatar(
             radius: 26,
-            backgroundColor: AppTheme.accentOrange.withOpacity(0.1),
-            child: const Text(
-              'JP',
-              style: TextStyle(color: AppTheme.accentOrange, fontWeight: FontWeight.bold, fontSize: 20),
+            backgroundColor: AppTheme.accentOrange.withValues(alpha: 0.1),
+            child: Text(
+              initials,
+              style: const TextStyle(color: AppTheme.accentOrange, fontWeight: FontWeight.bold, fontSize: 20),
             ),
           ),
           const SizedBox(width: 16),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
+            children: [
               Text(
-                'Juan Pérez',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.black),
+                adminName,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.black),
               ),
-              SizedBox(height: 2),
-              Text(
-                'Administrador Centro',
+              const SizedBox(height: 2),
+              const Text(
+                'Administrador',
                 style: TextStyle(color: Colors.grey, fontSize: 14),
               ),
             ],
@@ -273,22 +297,51 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   // ================= TAB 1: INICIO =================
   Widget _buildInicioTab() {
     final orderProvider = context.watch<OrderProvider>();
-    final total = orderProvider.orders.length;
-    final enRuta = orderProvider.orders.where((o) => o.status == 'En camino').length;
-    final entregados = orderProvider.orders.where((o) => o.status == 'Entregado').length;
-    final incidencias = orderProvider.orders.where((o) => o.status == 'Incidencia').length;
+    final today = DateTime.now();
+    final todayOrders = orderProvider.orders.where((o) {
+      final d = o.scheduledDate.toLocal();
+      return d.year == today.year && d.month == today.month && d.day == today.day;
+    }).toList();
 
-    final criticalOrders = orderProvider.orders.where((o) {
+    final total = todayOrders.length;
+    final enRuta = todayOrders.where((o) => o.status == 'En camino').length;
+    final entregados = todayOrders.where((o) => o.status == 'Entregado').length;
+    final incidencias = todayOrders.where((o) => o.status == 'Incidencia').length;
+
+    final criticalOrders = todayOrders.where((o) {
       if (o.status == 'Entregado' || o.status == 'Anulado') return false;
       return orderProvider.getPunctualityStatus(o).contains('Atrasado');
     }).toList();
 
-    return ListView(
+    final refreshedStr =
+        '${_lastRefreshed.hour.toString().padLeft(2, '0')}:${_lastRefreshed.minute.toString().padLeft(2, '0')}';
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        await context.read<OrderProvider>().fetchOrders();
+        setState(() => _lastRefreshed = DateTime.now());
+      },
+      child: ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        const Text(
-          'Resumen Hoy',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Resumen Hoy',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+            ),
+            Row(
+              children: [
+                Icon(Icons.update, size: 14, color: Colors.grey.shade500),
+                const SizedBox(width: 4),
+                Text(
+                  'Actualizado $refreshedStr',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                ),
+              ],
+            ),
+          ],
         ),
         const SizedBox(height: 16),
         GridView.count(
@@ -392,6 +445,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           ),
         ),
       ],
+    ),
     );
   }
 
@@ -439,21 +493,17 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
 
   // ================= TAB 2: MONITOR =================
   Widget _buildMonitorTab() {
-    try {
-      final orderProvider = context.watch<OrderProvider>();
-      final vehicleProvider = context.watch<VehicleProvider>();
+    final orderProvider = context.watch<OrderProvider>();
+    final vehicleProvider = context.watch<VehicleProvider>();
+    final clients = context.read<ClientProvider>().clients;
 
-      // Filtrar pedidos correspondientes al día de hoy (compatible con husos horarios)
-      final today = DateTime.now();
-      final todayOrders = orderProvider.orders.where((o) {
-        final localDate = o.scheduledDate.toLocal();
-        return localDate.year == today.year &&
-               localDate.month == today.month &&
-               localDate.day == today.day;
-      }).toList();
-
-      // Pedidos en ruta para el mapa (Flota en vivo)
-      final enRutaOrders = todayOrders.where((o) => o.status == 'En camino' || o.status == 'En Ruta').toList();
+    final today = DateTime.now();
+    final todayOrders = orderProvider.orders.where((o) {
+      final localDate = o.scheduledDate.toLocal();
+      return localDate.year == today.year &&
+             localDate.month == today.month &&
+             localDate.day == today.day;
+    }).toList();
 
       return ListView(
         padding: const EdgeInsets.all(20),
@@ -492,34 +542,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               borderRadius: BorderRadius.circular(16),
               side: BorderSide(color: Colors.grey.shade100),
             ),
-            child: Column(
-              children: [
-                Container(
-                  height: 180,
-                  width: double.infinity,
-                  child: FlutterMap(
-                    options: MapOptions(
-                      initialCenter: const ll.LatLng(-33.4489, -70.6693),
-                      initialZoom: 11.0,
-                      maxZoom: 18.0,
-                    ),
-                    children: [
-                      TileLayer(
-                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.example.qubico',
-                      ),
-                      MarkerLayer(
-                        markers: enRutaOrders
-                            .map((o) => Marker(
-                                  point: const ll.LatLng(-33.4489, -70.6693), // Ubicación simulada en Santiago
-                                  child: const Icon(Icons.local_shipping, color: AppTheme.accentOrange, size: 28),
-                                ))
-                            .toList(),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            child: SizedBox(
+              height: 220,
+              child: LiveFleetMap(orders: todayOrders),
             ),
           ),
           const SizedBox(height: 20),
@@ -541,7 +566,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ))
           else
             ...vehicleProvider.vehicles.map((vehicle) {
-              final ordersForVehicle = todayOrders.where((o) => o.driverId == vehicle.driverName).toList();
+              final driverId = vehicle.driverId ?? vehicle.driverName;
+              final ordersForVehicle = todayOrders.where((o) => o.driverId == driverId).toList();
               if (ordersForVehicle.isEmpty) return const SizedBox.shrink();
 
               return Card(
@@ -649,7 +675,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                                 children: [
                                   const SizedBox(height: 6),
                                   Text(
-                                    'Cliente: ${order.clientId}',
+                                    'Cliente: ${clients.firstWhere((c) => c.rut == order.clientId, orElse: () => Client(rut: order.clientId, name: order.clientId, phone: '', email: '', billingAddress: '')).name}',
                                     style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87, fontSize: 14),
                                   ),
                                   const SizedBox(height: 6),
@@ -690,34 +716,6 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             }),
         ],
       );
-    } catch (e, stack) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, color: Colors.red, size: 48),
-              const SizedBox(height: 16),
-              Text(
-                'Error al cargar el Monitor: $e',
-                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 16),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Text(
-                    stack.toString(),
-                    style: const TextStyle(fontFamily: 'monospace', fontSize: 10, color: Colors.black54),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
   }
 
   // ================= TAB 3: NUEVO =================
@@ -759,7 +757,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ),
                   const Divider(height: 24),
                   DropdownButtonFormField<String>(
-                    value: _selectedClientOption,
+                    initialValue: _selectedClientOption,
                     isExpanded: true,
                     items: [
                       const DropdownMenuItem<String>(
@@ -908,14 +906,14 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ),
                   const Divider(height: 24),
                   DropdownButtonFormField<String>(
-                    value: _selectedWindow,
+                    initialValue: _selectedWindow,
                     items: ['08:00 - 10:00', '10:00 - 12:00', '12:00 - 14:00', '14:00 - 16:00'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                     onChanged: (v) => setState(() => _selectedWindow = v!),
                     decoration: const InputDecoration(labelText: 'Ventana Horaria *'),
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    value: _selectedLoad,
+                    initialValue: _selectedLoad,
                     items: ['Paquetería', 'Construcción', 'Eventos'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                     onChanged: (v) => setState(() => _selectedLoad = v!),
                     decoration: const InputDecoration(labelText: 'Tipo de Carga *'),
@@ -970,7 +968,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   else
                     DropdownButtonFormField<Vehicle>(
                       isExpanded: true,
-                      value: _selectedVehicle,
+                      initialValue: _selectedVehicle,
                       items: vehicles.map((v) => DropdownMenuItem(value: v, child: Text('${v.name} [${v.patente}] (Max: ${v.maxWeight} kg)', overflow: TextOverflow.ellipsis))).toList(),
                       onChanged: (v) => setState(() => _selectedVehicle = v!),
                       decoration: const InputDecoration(labelText: 'Vehículo Asignado *'),
@@ -1032,7 +1030,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 // Encabezado de la Fecha con Botones de Exportación
                 Card(
                   elevation: 0,
-                  color: AppTheme.primaryBlue.withOpacity(0.05),
+                  color: AppTheme.primaryBlue.withValues(alpha: 0.05),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -1063,9 +1061,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         IconButton(
                           icon: const Icon(Icons.picture_as_pdf, color: Colors.red, size: 22),
                           onPressed: () async {
+                            final messenger = ScaffoldMessenger.of(context);
                             final path = await PdfService.generateDailyReport(ordersForDate);
                             provider.addGeneratedReport(dateStr, 'PDF', path);
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            messenger.showSnackBar(
                               const SnackBar(content: Text('Reporte PDF generado exitosamente')),
                             );
                           },
@@ -1073,13 +1072,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           constraints: const BoxConstraints(),
                           padding: const EdgeInsets.all(8),
                         ),
-                        // Botón Exportar Excel
                         IconButton(
                           icon: const Icon(Icons.table_view, color: Colors.green, size: 22),
                           onPressed: () async {
+                            final messenger = ScaffoldMessenger.of(context);
                             final path = await PdfService.generateCSVReport(ordersForDate, dateStr);
                             provider.addGeneratedReport(dateStr, 'Excel', path);
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            messenger.showSnackBar(
                               const SnackBar(content: Text('Reporte Excel (CSV) generado exitosamente')),
                             );
                           },
@@ -1139,13 +1138,35 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                         children: [
                           if (order.status == 'Pendiente' || order.status == 'Anulado')
                             PopupMenuButton<String>(
-                              onSelected: (value) {
+                              onSelected: (value) async {
                                 if (value == 'Anular') {
-                                  provider.updateOrderStatus(order.id!, 'Anulado');
+                                  final updatedBy = context.read<UserProvider>().currentUser?.fullName ?? 'Admin';
+                                  provider.updateOrderStatus(order.id!, 'Anulado', updatedBy);
+                                  if (!mounted) return;
                                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pedido anulado.')));
                                 } else if (value == 'Eliminar') {
-                                  provider.deleteOrder(order.id!);
-                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pedido eliminado.')));
+                                  final messenger = ScaffoldMessenger.of(context);
+                                  final confirmed = await showDialog<bool>(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: const Text('Eliminar pedido'),
+                                      content: Text('¿Eliminar permanentemente el pedido #${order.id}? Esta acción no se puede deshacer.'),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(ctx, false),
+                                          child: const Text('CANCELAR'),
+                                        ),
+                                        ElevatedButton(
+                                          onPressed: () => Navigator.pop(ctx, true),
+                                          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorColor),
+                                          child: const Text('ELIMINAR', style: TextStyle(color: Colors.white)),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (confirmed != true || !mounted) return;
+                                  await provider.deleteOrder(order.id!);
+                                  messenger.showSnackBar(const SnackBar(content: Text('Pedido eliminado.')));
                                 } else if (value == 'Editar') {
                                   // Pre-fill fields and move to form tab
                                   setState(() {
@@ -1196,7 +1217,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       ),
                     ),
                   );
-                }).toList(),
+                }),
                 const SizedBox(height: 16),
               ],
             );
@@ -1264,7 +1285,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         leading: CircleAvatar(
           radius: 22,
-          backgroundColor: AppTheme.primaryBlue.withOpacity(0.08),
+          backgroundColor: AppTheme.primaryBlue.withValues(alpha: 0.08),
           child: Icon(icon, color: AppTheme.primaryBlue),
         ),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),

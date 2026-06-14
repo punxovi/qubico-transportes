@@ -63,7 +63,7 @@ class _AdminOrderDetailScreenState extends State<AdminOrderDetailScreen> {
     Vehicle? vehicle;
     try {
       vehicle = vehicleProvider.vehicles.firstWhere(
-        (v) => v.driverName == widget.order.driverId,
+        (v) => v.driverId == widget.order.driverId,
       );
     } catch (_) {
       // fallback
@@ -134,7 +134,7 @@ class _AdminOrderDetailScreenState extends State<AdminOrderDetailScreen> {
               decoration: BoxDecoration(
                 color: statusBg,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: statusColor.withOpacity(0.2)),
+                border: Border.all(color: statusColor.withValues(alpha: 0.2)),
               ),
               child: Row(
                 children: [
@@ -158,7 +158,7 @@ class _AdminOrderDetailScreenState extends State<AdminOrderDetailScreen> {
                           Text(
                             'Actualizado: ${widget.order.deliveryTime!.toLocal().toString().substring(0, 19)}',
                             style: TextStyle(
-                              color: statusColor.withOpacity(0.8),
+                              color: statusColor.withValues(alpha: 0.8),
                               fontSize: 12,
                             ),
                           )
@@ -166,7 +166,7 @@ class _AdminOrderDetailScreenState extends State<AdminOrderDetailScreen> {
                           Text(
                             'Programado para: ${widget.order.timeWindow}',
                             style: TextStyle(
-                              color: statusColor.withOpacity(0.8),
+                              color: statusColor.withValues(alpha: 0.8),
                               fontSize: 12,
                             ),
                           ),
@@ -184,7 +184,7 @@ class _AdminOrderDetailScreenState extends State<AdminOrderDetailScreen> {
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.03),
+                          color: Colors.black.withValues(alpha: 0.03),
                           blurRadius: 4,
                           offset: const Offset(0, 2),
                         ),
@@ -226,9 +226,7 @@ class _AdminOrderDetailScreenState extends State<AdminOrderDetailScreen> {
                       children: [
                         CircleAvatar(
                           radius: 24,
-                          backgroundColor: AppTheme.primaryBlue.withOpacity(
-                            0.05,
-                          ),
+                          backgroundColor: AppTheme.primaryBlue.withValues(alpha: 0.05),
                           child: Text(
                             client.name.substring(0, 2).toUpperCase(),
                             style: const TextStyle(
@@ -358,7 +356,7 @@ class _AdminOrderDetailScreenState extends State<AdminOrderDetailScreen> {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: AppTheme.primaryBlue.withOpacity(0.1),
+                            color: AppTheme.primaryBlue.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
@@ -423,10 +421,10 @@ class _AdminOrderDetailScreenState extends State<AdminOrderDetailScreen> {
                           width: double.infinity,
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: AppTheme.errorColor.withOpacity(0.05),
+                            color: AppTheme.errorColor.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                              color: AppTheme.errorColor.withOpacity(0.2),
+                              color: AppTheme.errorColor.withValues(alpha: 0.2),
                             ),
                           ),
                           child: Row(

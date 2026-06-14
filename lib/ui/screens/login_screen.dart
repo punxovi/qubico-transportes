@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 import 'home_screen.dart';
 import 'admin_dashboard_screen.dart';
+import '../../providers/user_provider.dart';
+import '../../models/user_model.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,23 +18,42 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
   bool _obscurePassword = true;
 
-  void _login() {
+  void _login() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
-    if (email == 'admin@qubico.cl' && password == 'admin123') {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Por favor, ingresa tus credenciales')),
       );
-    } else if (email == 'conductor@qubico.cl' && password == 'conductor123') {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-      );
+      return;
+    }
+
+    final userProvider = context.read<UserProvider>();
+    final success = await userProvider.login(email, password);
+
+    if (!mounted) return;
+
+    if (success) {
+      final user = userProvider.currentUser!;
+      if (user.role == UserRole.admin) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
+        );
+      } else if (user.role == UserRole.conductor) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const HomeScreen()),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Rol no autorizado para acceder')),
+        );
+      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Credenciales incorrectas')),
+        const SnackBar(content: Text('Credenciales incorrectas o usuario inactivo')),
       );
     }
   }

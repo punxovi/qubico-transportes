@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -11,6 +12,7 @@ import '../theme/app_theme.dart';
 import 'order_detail_screen.dart';
 import 'login_screen.dart';
 import 'map_screen.dart';
+import '../../providers/user_provider.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,6 +23,52 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  Timer? _refreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _startAutoRefresh();
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startAutoRefresh() {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
+      if (!mounted) return;
+      final orderProvider = context.read<OrderProvider>();
+      final currentUserId = context.read<UserProvider>().currentUser?.id;
+      final prevCount = _getTodaysOrders(orderProvider.orders, currentUserId).length;
+
+      await orderProvider.fetchOrders();
+
+      if (!mounted) return;
+      final newCount = _getTodaysOrders(orderProvider.orders, currentUserId).length;
+      if (newCount > prevCount) {
+        final diff = newCount - prevCount;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('$diff nuevo${diff > 1 ? 's' : ''} pedido${diff > 1 ? 's' : ''} asignado${diff > 1 ? 's' : ''}'),
+          backgroundColor: AppTheme.primaryBlue,
+          duration: const Duration(seconds: 4),
+        ));
+      }
+    });
+  }
+
+  List<Order> _getTodaysOrders(List<Order> orders, String? currentUserId) {
+    final today = DateTime.now();
+    return orders.where((o) =>
+      o.scheduledDate.year == today.year &&
+      o.scheduledDate.month == today.month &&
+      o.scheduledDate.day == today.day &&
+      o.driverId == currentUserId &&
+      o.status != 'Anulado'
+    ).toList();
+  }
 
   Future<void> _makePhoneCall(String phoneNumber) async {
     final Uri launchUri = Uri(
@@ -49,6 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white),
             onPressed: () {
+              context.read<UserProvider>().logout();
               Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -60,7 +109,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Column(
         children: [
-          _buildConductorHeader(),
+          _buildConductorHeader(context),
           Expanded(
             child: IndexedStack(
               index: _currentIndex,
@@ -90,7 +139,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildConductorHeader() {
+  Widget _buildConductorHeader(BuildContext context) {
+    final userProvider = context.watch<UserProvider>();
+    final driverName = userProvider.currentUser?.fullName ?? 'Conductor';
+    final initials = driverName.split(' ').take(2).map((e) => e.isNotEmpty ? e[0].toUpperCase() : '').join();
+    final firstName = driverName.split(' ').first;
+
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -98,22 +152,22 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           CircleAvatar(
             radius: 26,
-            backgroundColor: AppTheme.accentOrange.withOpacity(0.1),
-            child: const Text(
-              'JP',
-              style: TextStyle(color: AppTheme.accentOrange, fontWeight: FontWeight.bold, fontSize: 20),
+            backgroundColor: AppTheme.accentOrange.withValues(alpha: 0.1),
+            child: Text(
+              initials,
+              style: const TextStyle(color: AppTheme.accentOrange, fontWeight: FontWeight.bold, fontSize: 20),
             ),
           ),
           const SizedBox(width: 16),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
+            children: [
               Text(
-                '¡Buen viaje, Juan!',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.primaryBlue),
+                '¡Buen viaje, $firstName!',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.primaryBlue),
               ),
-              SizedBox(height: 4),
-              Text(
+              const SizedBox(height: 4),
+              const Text(
                 'Conductor de Ruta',
                 style: TextStyle(fontSize: 14, color: Colors.grey),
               ),
@@ -143,19 +197,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildCargasTab(BuildContext context) {
     final provider = context.watch<OrderProvider>();
-    final today = DateTime.now();
-    final todaysOrders = provider.orders.where((o) => 
-      o.scheduledDate.year == today.year && 
-      o.scheduledDate.month == today.month && 
-      o.scheduledDate.day == today.day
-    ).toList();
-
+    final userProvider = context.watch<UserProvider>();
+    final currentUserId = userProvider.currentUser?.id;
+    final driverName = userProvider.currentUser?.fullName ?? 'Conductor';
+    final todaysOrders = _getTodaysOrders(provider.orders, currentUserId);
     final vehicleProvider = context.watch<VehicleProvider>();
     Vehicle assignedVehicle;
     try {
-      assignedVehicle = vehicleProvider.vehicles.firstWhere((v) => v.driverName == 'Juan Perez');
+      assignedVehicle = vehicleProvider.vehicles.firstWhere((v) => v.driverId == currentUserId);
     } catch (_) {
-      assignedVehicle = Vehicle(name: 'Furgón Pequeño', patente: 'AB-CD-12', maxWeight: 300.0, driverName: 'Juan Perez');
+      // Fallback: match by name for vehicles without driverId yet
+      try {
+        assignedVehicle = vehicleProvider.vehicles.firstWhere((v) => v.driverName == driverName);
+      } catch (_) {
+        assignedVehicle = Vehicle(name: '—', patente: '—', maxWeight: 1000.0, driverName: driverName);
+      }
     }
 
     final activeOrders = todaysOrders.where((o) => o.status != 'Entregado').toList();
@@ -199,7 +255,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: AppTheme.primaryBlue.withOpacity(0.1),
+                                  color: AppTheme.primaryBlue.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
@@ -267,7 +323,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 )
               else
-                ...todaysOrders.map((order) => _buildCargoItemCard(order)).toList(),
+                ...todaysOrders.map((order) => _buildCargoItemCard(order)),
             ],
           ),
         ),
@@ -277,12 +333,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildPerfilTab(BuildContext context) {
     final provider = context.watch<OrderProvider>();
-    final today = DateTime.now();
-    final todaysOrders = provider.orders.where((o) => 
-      o.scheduledDate.year == today.year && 
-      o.scheduledDate.month == today.month && 
-      o.scheduledDate.day == today.day
-    ).toList();
+    final userProvider = context.watch<UserProvider>();
+    final currentUser = userProvider.currentUser;
+    final driverName = currentUser?.fullName ?? 'Conductor';
+    final driverEmail = currentUser?.email ?? '';
+    final driverId = currentUser?.id ?? '';
+    final initials = driverName.split(' ').take(2).map((e) => e.isNotEmpty ? e[0].toUpperCase() : '').join();
+
+    final todaysOrders = _getTodaysOrders(provider.orders, currentUser?.id);
 
     final deliveredCount = todaysOrders.where((o) => o.status == 'Entregado').length;
     final inRouteCount = todaysOrders.where((o) => o.status == 'En camino').length;
@@ -312,25 +370,25 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       CircleAvatar(
                         radius: 36,
-                        backgroundColor: AppTheme.primaryBlue.withOpacity(0.1),
-                        child: const Text(
-                          'JP',
-                          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.primaryBlue),
+                        backgroundColor: AppTheme.primaryBlue.withValues(alpha: 0.1),
+                        child: Text(
+                          initials,
+                          style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.primaryBlue),
                         ),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
+                          children: [
                             Text(
-                              'Juan Pérez',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: AppTheme.primaryBlue),
+                              driverName,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20, color: AppTheme.primaryBlue),
                             ),
-                            SizedBox(height: 4),
-                            Text('RUT: 12.345.678-9', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                            SizedBox(height: 2),
-                            Text('juan@qubico.cl', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                            const SizedBox(height: 4),
+                            Text('ID: $driverId', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                            const SizedBox(height: 2),
+                            Text(driverEmail, style: const TextStyle(color: Colors.grey, fontSize: 13)),
                           ],
                         ),
                       ),
@@ -372,6 +430,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: ElevatedButton.icon(
                   onPressed: () {
+                    context.read<UserProvider>().logout();
                     Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -399,15 +458,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildHeader(BuildContext context, {required String title, required String Function(List<Order>) subtitleBuilder}) {
     final provider = context.watch<OrderProvider>();
-    final today = DateTime.now();
-    final todaysOrders = provider.orders.where((o) => 
-      o.scheduledDate.year == today.year && 
-      o.scheduledDate.month == today.month && 
-      o.scheduledDate.day == today.day
-    ).toList();
+    final currentUserId = context.watch<UserProvider>().currentUser?.id;
+    final todaysOrders = _getTodaysOrders(provider.orders, currentUserId);
     
+    final now = DateTime.now();
     final List<String> months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    final dateStr = '${today.day} ${months[today.month - 1]}';
+    final dateStr = '${now.day} ${months[now.month - 1]}';
 
     return Container(
       padding: const EdgeInsets.only(top: 60, left: 24, right: 24, bottom: 24),
@@ -426,6 +482,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               GestureDetector(
                 onTap: () {
+                  context.read<UserProvider>().logout();
                   Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
                 },
                 child: const Text('Cerrar App', style: TextStyle(color: Colors.white70, fontSize: 14)),
@@ -433,7 +490,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text('Hoy, $dateStr', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
@@ -452,21 +509,28 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildRouteTimeline(BuildContext context) {
     final provider = context.watch<OrderProvider>();
     final clientProvider = context.read<ClientProvider>();
-    
-    final today = DateTime.now();
-    final todaysOrders = provider.orders.where((o) => 
-      o.scheduledDate.year == today.year && 
-      o.scheduledDate.month == today.month && 
-      o.scheduledDate.day == today.day
-    ).toList();
+    final currentUserId = context.watch<UserProvider>().currentUser?.id;
+    final todaysOrders = _getTodaysOrders(provider.orders, currentUserId);
 
     if (provider.isLoading) return const Center(child: CircularProgressIndicator());
-    if (todaysOrders.isEmpty) return const Center(child: Text('No hay paradas hoy.', style: TextStyle(color: Colors.grey)));
+    if (todaysOrders.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: () => context.read<OrderProvider>().fetchOrders(),
+        child: ListView(
+          children: const [
+            SizedBox(height: 120),
+            Center(child: Text('No hay paradas hoy.', style: TextStyle(color: Colors.grey))),
+          ],
+        ),
+      );
+    }
 
     // Find the next active order (first one that is 'Pendiente' or 'En camino')
     int nextOrderIndex = todaysOrders.indexWhere((o) => o.status == 'Pendiente' || o.status == 'En camino');
 
-    return ListView.builder(
+    return RefreshIndicator(
+      onRefresh: () => context.read<OrderProvider>().fetchOrders(),
+      child: ListView.builder(
       padding: const EdgeInsets.only(top: 24, left: 16, right: 16, bottom: 24),
       itemCount: todaysOrders.length,
       itemBuilder: (context, index) {
@@ -518,6 +582,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       },
+    ),
     );
   }
 
@@ -610,7 +675,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           if (order.status == 'Entregado' || order.status == 'Incidencia') {
                             Navigator.push(context, MaterialPageRoute(builder: (_) => OrderDetailScreen(order: order)));
                           } else if (order.status == 'Pendiente') {
-                            context.read<OrderProvider>().updateOrderStatus(order.id!, 'En camino');
+                            final updatedBy = context.read<UserProvider>().currentUser?.fullName ?? 'Conductor';
+                            context.read<OrderProvider>().updateOrderStatus(order.id!, 'En camino', updatedBy);
                             Navigator.push(context, MaterialPageRoute(builder: (_) => MapScreen(selectedOrder: order)));
                           } else if (order.status == 'En camino') {
                             Navigator.push(context, MaterialPageRoute(builder: (_) => OrderDetailScreen(order: order)));
@@ -641,7 +707,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildCargoItemCard(Order order) {
-    // Beautiful badges depending on load type
     Color badgeColor = AppTheme.primaryBlue;
     if (order.loadType == 'Construcción') badgeColor = AppTheme.accentOrange;
     if (order.loadType == 'Eventos') badgeColor = Colors.purple;
@@ -670,7 +735,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: badgeColor.withOpacity(0.1),
+                    color: badgeColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
@@ -740,7 +805,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: badgeColor.withOpacity(0.1),
+        color: badgeColor.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(

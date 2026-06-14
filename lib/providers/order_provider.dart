@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import '../models/order_model.dart';
-import '../services/database_service.dart';
+import '../repositories/order_repository.dart';
 
 class OrderProvider with ChangeNotifier {
+  final OrderRepository repository;
+
   List<Order> _orders = [];
   bool _isLoading = false;
+
+  OrderProvider({required this.repository});
 
   List<Order> get orders => _orders;
   bool get isLoading => _isLoading;
@@ -27,10 +31,9 @@ class OrderProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final data = await DatabaseService.instance.queryAll('orders');
-      _orders = data.map((e) => Order.fromMap(e)).toList();
+      _orders = await repository.fetchOrders();
     } catch (e) {
-      print('DB Error in fetchOrders, using resilient in-memory fallback: $e');
+      debugPrint('Repository Error in fetchOrders, using resilient in-memory fallback: $e');
       if (_orders.isEmpty) {
         _orders = [];
       }
@@ -58,20 +61,11 @@ class OrderProvider with ChangeNotifier {
     });
   }
 
-  Future<void> addOrder(Order order) async {
+  Future<void> addOrder(Order order, {String createdBy = 'Admin'}) async {
     try {
-      final id = await DatabaseService.instance.insert('orders', order.toMap());
-      
-      // Log creation in audit trail
-      await DatabaseService.instance.insert('audit_logs', {
-        'user_id': 'Admin',
-        'action': 'Creación Pedido #$id',
-        'timestamp': DateTime.now().toIso8601String(),
-        'old_value': 'Ninguno',
-        'new_value': 'Creado y Asignado a ${order.driverId}',
-      });
+      await repository.addOrder(order, createdBy);
     } catch (e) {
-      print('DB Error in addOrder, performing resilient in-memory add: $e');
+      debugPrint('Repository Error in addOrder, performing resilient in-memory add: $e');
       final newId = _orders.isEmpty ? 1 : (_orders.map((o) => o.id ?? 0).reduce((a, b) => a > b ? a : b) + 1);
       final newOrder = Order(
         id: newId,
@@ -96,37 +90,25 @@ class OrderProvider with ChangeNotifier {
     await fetchOrders();
   }
 
-  Future<void> updateOrderStatus(int id, String newStatus, {String? incidentReason, String? evidencePath, String? signaturePath}) async {
-    // Fetch old status for logging
+  Future<void> updateOrderStatus(int id, String newStatus, String updatedBy, {String? incidentReason, String? evidencePath, String? signaturePath}) async {
     String oldStatus = 'Pendiente';
-    String driver = 'Conductor';
     try {
       final oldOrder = _orders.firstWhere((o) => o.id == id);
       oldStatus = oldOrder.status;
-      driver = oldOrder.driverId ?? 'Conductor';
     } catch (_) {}
 
     try {
-      final Map<String, dynamic> updates = {
-        'status': newStatus,
-        'delivery_time': DateTime.now().toIso8601String(),
-      };
-      if (incidentReason != null) updates['incident_reason'] = incidentReason;
-      if (evidencePath != null) updates['evidence_path'] = evidencePath;
-      if (signaturePath != null) updates['signature_path'] = signaturePath;
-
-      await DatabaseService.instance.update('orders', updates, 'id', id);
-
-      // Log state transition in audit trail
-      await DatabaseService.instance.insert('audit_logs', {
-        'user_id': driver,
-        'action': 'Actualización Estado Pedido #$id',
-        'timestamp': DateTime.now().toIso8601String(),
-        'old_value': oldStatus,
-        'new_value': newStatus + (incidentReason != null ? ' ($incidentReason)' : ''),
-      });
+      await repository.updateOrderStatus(
+        id, 
+        newStatus, 
+        updatedBy, 
+        oldStatus: oldStatus,
+        incidentReason: incidentReason,
+        evidencePath: evidencePath,
+        signaturePath: signaturePath,
+      );
     } catch (e) {
-      print('DB Error in updateOrderStatus, performing resilient in-memory update: $e');
+      debugPrint('Repository Error in updateOrderStatus, performing resilient in-memory update: $e');
       final idx = _orders.indexWhere((o) => o.id == id);
       if (idx != -1) {
         final o = _orders[idx];
@@ -158,34 +140,21 @@ class OrderProvider with ChangeNotifier {
   }
 
   Future<List<Map<String, dynamic>>> getAuditLogsForOrder(int orderId) async {
-    try {
-      final data = await DatabaseService.instance.queryAll('audit_logs');
-      return data.where((log) => log['action'].toString().contains('#$orderId')).toList();
-    } catch (_) {
-      return [];
-    }
+    return await repository.getAuditLogsForOrder(orderId);
   }
 
   Future<List<Map<String, dynamic>>> getGlobalAuditLogs() async {
-    try {
-      final data = await DatabaseService.instance.queryAll('audit_logs');
-      // Sort by timestamp descending (newest first)
-      final logs = List<Map<String, dynamic>>.from(data);
-      logs.sort((a, b) => DateTime.parse(b['timestamp']).compareTo(DateTime.parse(a['timestamp'])));
-      return logs;
-    } catch (_) {
-      return [];
-    }
+    return await repository.getGlobalAuditLogs();
   }
 
   Future<void> updateOrder(Order order) async {
     if (order.id == null) return;
-    await DatabaseService.instance.update('orders', order.toMap(), 'id', order.id);
+    await repository.updateOrder(order);
     await fetchOrders();
   }
 
   Future<void> deleteOrder(int id) async {
-    await DatabaseService.instance.delete('orders', 'id', id);
+    await repository.deleteOrder(id);
     await fetchOrders();
   }
 

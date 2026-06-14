@@ -7,6 +7,7 @@ import '../../models/order_model.dart';
 import '../../models/client_model.dart';
 import '../../providers/order_provider.dart';
 import '../../providers/client_provider.dart';
+import '../../providers/user_provider.dart';
 import '../theme/app_theme.dart';
 
 class OrderDetailScreen extends StatefulWidget {
@@ -65,14 +66,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     }
   }
 
-  void _updateStatus(String status, {String? signaturePath, String? evidencePath, String? incidentReason}) {
-    context.read<OrderProvider>().updateOrderStatus(
-      widget.order.id!, 
+  Future<void> _updateStatus(String status, {String? signaturePath, String? evidencePath, String? incidentReason}) async {
+    final updatedBy = context.read<UserProvider>().currentUser?.fullName ?? 'Conductor';
+    await context.read<OrderProvider>().updateOrderStatus(
+      widget.order.id!,
       status,
+      updatedBy,
       signaturePath: signaturePath,
       evidencePath: evidencePath,
       incidentReason: incidentReason,
     );
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Pedido actualizado: $status')),
     );
@@ -95,7 +99,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 DropdownButtonFormField<String>(
                   isExpanded: true,
                   hint: const Text('Seleccionar motivo'),
-                  value: _selectedIncidentReason,
+                  initialValue: _selectedIncidentReason,
                   items: _incidentReasons.map((String value) => DropdownMenuItem<String>(value: value, child: Text(value))).toList(),
                   onChanged: (val) => setDialogState(() => _selectedIncidentReason = val),
                   decoration: const InputDecoration(labelText: 'Motivo'),

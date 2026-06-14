@@ -1,8 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import '../models/order_model.dart';
-import '../models/client_model.dart';
-import '../models/user_model.dart';
 import 'security_service.dart';
 
 class DatabaseService {
@@ -22,27 +20,28 @@ class DatabaseService {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
-    print('DEBUG QUBICO: Initializing database at path: $path');
+    debugPrint('DEBUG QUBICO: Initializing database at path: $path');
 
     return await openDatabase(
       path,
-      version: 5,
+      version: 9,
       onCreate: (db, version) async {
-        print('DEBUG QUBICO: onCreate triggered for version $version');
+        debugPrint('DEBUG QUBICO: onCreate triggered for version $version');
         await _createDB(db, version);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
-        print('DEBUG QUBICO: onUpgrade triggered from $oldVersion to $newVersion');
-        if (oldVersion < 5) {
-          print('DEBUG QUBICO: Purging older tables to upgrade schema to v5...');
+        debugPrint('DEBUG QUBICO: onUpgrade triggered from $oldVersion to $newVersion');
+        if (oldVersion < 9) {
+          debugPrint('DEBUG QUBICO: Purging older tables to upgrade schema to v7...');
           await db.execute('DROP TABLE IF EXISTS orders');
           await db.execute('DROP TABLE IF EXISTS clients');
           await db.execute('DROP TABLE IF EXISTS users');
           await db.execute('DROP TABLE IF EXISTS vehicles');
           await db.execute('DROP TABLE IF EXISTS audit_logs');
-          print('DEBUG QUBICO: All older tables dropped. Recreating with v5...');
-          await _createDB(db, 5);
-          print('DEBUG QUBICO: Recreated database successfully for v5.');
+          await db.execute('DROP TABLE IF EXISTS sync_queue');
+          debugPrint('DEBUG QUBICO: All older tables dropped. Recreating with v7...');
+          await _createDB(db, 7);
+          debugPrint('DEBUG QUBICO: Recreated database successfully for v7.');
         }
       },
     );
@@ -55,7 +54,8 @@ class DatabaseService {
         name TEXT NOT NULL,
         patente TEXT NOT NULL,
         max_weight REAL NOT NULL,
-        driver_name TEXT NOT NULL
+        driver_name TEXT NOT NULL,
+        driver_id TEXT
       )
     ''');
 
@@ -64,6 +64,7 @@ class DatabaseService {
         id TEXT PRIMARY KEY,
         full_name TEXT NOT NULL,
         email TEXT NOT NULL,
+        password TEXT NOT NULL,
         role TEXT NOT NULL,
         is_active INTEGER NOT NULL
       )
@@ -113,6 +114,18 @@ class DatabaseService {
       )
     ''');
 
+    await db.execute('''
+      CREATE TABLE sync_queue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        status TEXT DEFAULT 'pending'
+      )
+    ''');
+
     // Seed default data inside a fast batch transaction
     final batch = db.batch();
     
@@ -120,7 +133,8 @@ class DatabaseService {
     batch.insert('users', {
       'id': '12345678-9',
       'full_name': 'Juan Perez',
-      'email': 'juan@qubico.cl',
+      'email': 'conductor@qubico.cl',
+      'password': SecurityService.generateHash('conductor123'),
       'role': 'conductor',
       'is_active': 1
     });
@@ -128,6 +142,7 @@ class DatabaseService {
       'id': '98765432-1',
       'full_name': 'Admin',
       'email': 'admin@qubico.cl',
+      'password': SecurityService.generateHash('admin123'),
       'role': 'admin',
       'is_active': 1
     });
@@ -153,18 +168,20 @@ class DatabaseService {
       'name': 'Furgón Pequeño',
       'patente': 'AB-CD-12',
       'max_weight': 300.0,
-      'driver_name': 'Juan Perez'
+      'driver_name': 'Juan Perez',
+      'driver_id': '12345678-9',
     });
     batch.insert('vehicles', {
       'name': 'Camioneta Mediana',
       'patente': 'WX-YZ-99',
       'max_weight': 800.0,
-      'driver_name': 'Conductor 2'
+      'driver_name': 'Conductor 2',
+      'driver_id': null,
     });
 
-    print('DEBUG QUBICO: Committing seed data batch...');
+    debugPrint('DEBUG QUBICO: Committing seed data batch...');
     await batch.commit(noResult: true);
-    print('DEBUG QUBICO: Seed data batch committed successfully.');
+    debugPrint('DEBUG QUBICO: Seed data batch committed successfully.');
   }
 
   // Generic methods for CRUD

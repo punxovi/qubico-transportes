@@ -4,6 +4,7 @@ class Vehicle {
   final String patente;
   final double maxWeight;
   final String driverName;
+  final String? driverId;
 
   Vehicle({
     this.id,
@@ -11,6 +12,7 @@ class Vehicle {
     required this.patente,
     required this.maxWeight,
     required this.driverName,
+    this.driverId,
   });
 
   Map<String, dynamic> toMap() {
@@ -20,6 +22,7 @@ class Vehicle {
       'patente': patente,
       'max_weight': maxWeight,
       'driver_name': driverName,
+      'driver_id': driverId,
     };
   }
 
@@ -30,6 +33,7 @@ class Vehicle {
       patente: map['patente'] ?? '',
       maxWeight: map['max_weight'],
       driverName: map['driver_name'],
+      driverId: map['driver_id'],
     );
   }
 }

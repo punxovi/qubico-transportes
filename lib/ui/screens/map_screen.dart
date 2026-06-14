@@ -59,11 +59,12 @@ class _MapScreenState extends State<MapScreen> {
       }
 
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
       );
       final currentLatLng = ll.LatLng(position.latitude, position.longitude);
 
       final today = DateTime.now();
+      // ignore: use_build_context_synchronously
       var orders = Provider.of<OrderProvider>(context, listen: false).orders.where((o) =>
         o.scheduledDate.year == today.year &&
         o.scheduledDate.month == today.month &&
@@ -229,6 +230,7 @@ class _MapScreenState extends State<MapScreen> {
       final position = await Geolocator.getCurrentPosition();
       _mapController.move(ll.LatLng(position.latitude, position.longitude), 15.0);
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No se pudo obtener la ubicación')),
       );
@@ -286,7 +288,7 @@ class _MapScreenState extends State<MapScreen> {
             FloatingActionButton.extended(
               heroTag: 'btn_gmaps',
               onPressed: () async {
-                final url = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=${Uri.encodeComponent(widget.selectedOrder!.address + ", Santiago, Chile")}');
+                final url = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=${Uri.encodeComponent('${widget.selectedOrder!.address}, Santiago, Chile')}');
                 await launchUrl(url, mode: LaunchMode.externalApplication);
               },
               label: const Text('Navegar con Google Maps', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),

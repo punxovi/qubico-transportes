@@ -1,10 +1,35 @@
+import 'dart:convert';
 import 'package:encrypt/encrypt.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:crypto/crypto.dart';
 
 class SecurityService {
-  // AES-256 requires a 32-character key
-  static final _key = Key.fromUtf8('QubicoTransportes2024SecureKey!!'); 
-  static final _iv = IV.fromLength(16);
-  static final _encrypter = Encrypter(AES(_key));
+  static Key? _cachedKey;
+  static Encrypter? _cachedEncrypter;
+
+  static Key get _key {
+    if (_cachedKey != null) return _cachedKey!;
+    final keyStr = dotenv.env['ENCRYPTION_KEY'] ?? 'QubicoTransportes2024SecureKey!!';
+    _cachedKey = Key.fromUtf8(keyStr);
+    return _cachedKey!;
+  }
+
+  static IV get _iv {
+    final ivStr = dotenv.env['ENCRYPTION_IV'] ?? 'QubicoIV16Bytes!';
+    return IV.fromUtf8(ivStr);
+  }
+
+  static Encrypter get _encrypter {
+    _cachedEncrypter ??= Encrypter(AES(_key));
+    return _cachedEncrypter!;
+  }
+
+  /// Genera un hash determinista (SHA-256) ideal para Indexación Ciega en bases de datos NoSQL
+  static String generateHash(String text) {
+    if (text.isEmpty) return text;
+    final bytes = utf8.encode(text.toLowerCase().trim());
+    return sha256.convert(bytes).toString();
+  }
 
   /// Encrypts a string using AES-256
   static String encrypt(String text) {

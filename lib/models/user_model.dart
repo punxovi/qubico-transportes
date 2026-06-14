@@ -4,6 +4,7 @@ class User {
   final String id;
   final String fullName;
   final String email;
+  final String password;
   final UserRole role;
   final bool isActive;
 
@@ -11,6 +12,7 @@ class User {
     required this.id,
     required this.fullName,
     required this.email,
+    required this.password,
     required this.role,
     this.isActive = true,
   });
@@ -20,6 +22,7 @@ class User {
       'id': id,
       'full_name': fullName,
       'email': email,
+      'password': password,
       'role': role.toString().split('.').last,
       'is_active': isActive ? 1 : 0,
     };
@@ -30,6 +33,7 @@ class User {
       id: map['id'],
       fullName: map['full_name'],
       email: map['email'],
+      password: map['password'] ?? '',
       role: UserRole.values.firstWhere(
         (e) => e.toString().split('.').last == map['role'],
       ),

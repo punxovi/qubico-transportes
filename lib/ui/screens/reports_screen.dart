@@ -141,23 +141,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                 trailing: IconButton(
                                   icon: const Icon(Icons.open_in_new, color: AppTheme.primaryBlue),
                                   onPressed: () async {
+                                    final messenger = ScaffoldMessenger.of(context);
                                     final file = File(rep['filePath']);
                                     if (await file.exists()) {
                                       if (isPdf) {
                                         await Printing.layoutPdf(onLayout: (format) async => file.readAsBytes());
                                       } else {
-                                        ScaffoldMessenger.of(context).showSnackBar(
+                                        messenger.showSnackBar(
                                           SnackBar(
                                             content: Text('Archivo CSV guardado en: ${rep['filePath']}'),
-                                            action: SnackBarAction(
-                                              label: 'OK',
-                                              onPressed: () {},
-                                            ),
+                                            action: SnackBarAction(label: 'OK', onPressed: () {}),
                                           ),
                                         );
                                       }
                                     } else {
-                                      ScaffoldMessenger.of(context).showSnackBar(
+                                      messenger.showSnackBar(
                                         const SnackBar(content: Text('El archivo temporal ya no existe, por favor regenéralo.')),
                                       );
                                     }

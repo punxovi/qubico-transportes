@@ -33,6 +33,7 @@ class VehicleProvider with ChangeNotifier {
         patente: vehicle.patente,
         maxWeight: vehicle.maxWeight,
         driverName: vehicle.driverName,
+        driverId: vehicle.driverId,
       );
       _vehicles.add(newVehicle);
       notifyListeners();
